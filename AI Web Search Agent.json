@@ -1,0 +1,229 @@
+{
+  "name": "AI Web Search Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "lastNode"
+        }
+      },
+      "id": "21138de2-c88d-42a8-9328-7496515df2f5",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        112
+      ],
+      "webhookId": "d0e4f9c1-26af-4c8f-ae9a-8e7351346ea1"
+    },
+    {
+      "parameters": {
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are a helpful research assistant with live web access.\n\nTools:\n- Tavily web search tools: search the web and return result titles, URLs and content.\n\nInstructions:\n- For questions about current events, facts that may have changed, products, prices, people, or anything you are not certain about, call the Tavily search tool first. You may search several times with refined queries.\n- Base your answer on the search results. Do not invent facts.\n- Answer clearly and concisely.\n- Output format: your final answer must be a JSON object with two fields: \"answer\" (the answer text, no links, no internal references like 【…】) and \"sources\" (an array of {\"title\", \"url\"} objects using the real titles and URLs returned by the Search in Tavily tool; empty array if you did not search). Never invent a URL.\n- If the results do not answer the question, say so.\n- When calling the Tavily search tool, always provide the query argument with a short search phrase.\n- Search budget: for questions covering several companies or topics, do at most 2 searches per company or topic (one focused query, plus one refined query only if needed), and never more than 12 searches in total. Then stop searching and write the answer with what you found.\n- If information is missing for one company or period, say so in the answer instead of searching again and again.\n- Reply in the same language as the user.\n\nCurrent date and time: {{ $now.toISO() }}",
+          "maxIterations": 30,
+          "enableStreaming": false
+        }
+      },
+      "id": "abbdf963-9b0d-41a1-8348-7b03e4f78272",
+      "name": "Web Search Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        288,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-oss:120b",
+        "options": {}
+      },
+      "id": "20e83336-101b-4715-9faf-bd1acd6a9351",
+      "name": "Ollama Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        240,
+        352
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "CGEwm4g0JmerqEFS",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=v2-{{ $('When chat message received').item.json.sessionId }}"
+      },
+      "id": "31d295e7-63e3-4387-85bb-337cb8794bcd",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        368,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Search the web with Tavily. Always pass a non-empty query. Returns result titles, URLs and content.",
+        "query": "={{ $fromAI('query', 'The web search query as a short search phrase, e.g. L Oreal competitors', 'string') }}",
+        "options": {
+          "topic": "general",
+          "max_results": 5
+        }
+      },
+      "id": "bf3ab451-b37c-4f34-894e-28590362733f",
+      "name": "Search in Tavily",
+      "type": "@tavily/n8n-nodes-tavily.tavilyTool",
+      "typeVersion": 1,
+      "position": [
+        496,
+        352
+      ],
+      "credentials": {
+        "tavilyApi": {
+          "id": "ToQPxYcMIEnAn3Km",
+          "name": "Tavily account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"answer\": { \"type\": \"string\", \"description\": \"The answer to the user question, in the user's language, without links\" },\n    \"sources\": {\n      \"type\": \"array\",\n      \"description\": \"Web pages used for the answer, taken from the Tavily results. Empty array if no search was done\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"title\": { \"type\": \"string\" },\n          \"url\": { \"type\": \"string\" }\n        },\n        \"required\": [\"title\", \"url\"]\n      }\n    }\n  },\n  \"required\": [\"answer\", \"sources\"]\n}"
+      },
+      "id": "7ae87ff4-e145-4206-a587-d04b0f93a9ea",
+      "name": "JSON Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        624,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "answer",
+              "type": "string",
+              "value": "={{ $json.output.answer }}"
+            },
+            {
+              "id": "a2",
+              "name": "sources",
+              "type": "array",
+              "value": "={{ $json.output.sources }}"
+            },
+            {
+              "id": "a3",
+              "name": "output",
+              "type": "string",
+              "value": "={{ JSON.stringify({ answer: $json.output.answer, sources: $json.output.sources }, null, 2) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "56fec0f4-f597-410d-b0ba-23187d35f612",
+      "name": "Format JSON Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        832,
+        128
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Web Search Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Search Agent": {
+      "main": [
+        [
+          {
+            "node": "Format JSON Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Web Search Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Web Search Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search in Tavily": {
+      "ai_tool": [
+        [
+          {
+            "node": "Web Search Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JSON Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Web Search Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "50b2f95b-b447-4c71-86f4-42d3fe8a323e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "45457d9c2335e211fe8ead6d34f4169270e16113593c25e2ace82c798e5c328a"
+  },
+  "nodeGroups": [],
+  "id": "mslAk5aBMZ4SDlK9",
+  "tags": []
+}
